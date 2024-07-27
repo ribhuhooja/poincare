@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import List
 import math
 
 import pygame
@@ -26,7 +27,7 @@ def render(screen):
 
 def draw_poincare_disk(screen):
     draw_boundary_circle(screen)
-    draw_hyperbolic_geodesic(screen, math.pi / 3, 4 * math.pi / 3)
+    draw_ideal_polygon(screen, [0, math.pi / 2, math.pi])
 
 
 def draw_boundary_circle(screen):
@@ -68,6 +69,17 @@ def draw_hyperbolic_geodesic(screen, alpha: float, beta: float):
         draw_diameter(screen, alpha)
     else:
         draw_perpendicular_arc(screen, alpha, beta)
+
+
+def draw_ideal_polygon(screen, angles: List[float]):
+    length = len(angles)
+    if length <= 1:
+        return
+
+    for i in range(length - 1):
+        draw_hyperbolic_geodesic(screen, angles[i], angles[i + 1])
+
+    draw_hyperbolic_geodesic(screen, angles[-1], angles[0])
 
 
 def draw_diameter(screen, alpha: float):
