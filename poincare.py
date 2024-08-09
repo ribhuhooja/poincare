@@ -1,8 +1,9 @@
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Tuple, Set
 import math
 import cmath
 import random
+from collections import deque
 
 import pygame
 from pygame.math import Vector2 as Vec2
@@ -11,7 +12,7 @@ SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 800
 FPS = 60
 
-POINT_RADIUS = 5
+POINT_RADIUS = 3
 
 
 @dataclass
@@ -78,6 +79,7 @@ def transform_ideal_point(point: float, tr: MobiusTransform):
 class PoincareDisk:
     def __init__(self):
         self.points: List[complex] = []
+        self.tree: List[List[complex]] = []
         self.ideal_polygons: List[IdealPolygon] = []
         self.geodesics: List[Tuple[float, float]] = []
 
@@ -98,10 +100,58 @@ class PoincareDisk:
         for poly in self.ideal_polygons:
             poly.apply_mobius(tr)
 
+        for i in range(len(self.tree)):
+            self.tree[i] = [tr(z) for z in self.tree[i]]
+
+    def generate_tiling(self, order: int, numtiles: int):
+        self.points = []
+        self.tree = []
+        seen = set()
+
+        # NOTE: For now only order three
+        u = 1j * (2 - math.sqrt(3))
+        v = -1 * u
+        self.tree.append([u, v])
+        seen.add((u, v))
+        self.points.append(u)
+        self.points.append(v)
+
+        a = MobiusTransform(-1, 0, 0, 1)
+        b = MobiusTransform(1 + 2j, 1, 1, 1 - 2j)
+
+        queue = deque()
+        queue.append([u, v])
+
+        for _ in range(numtiles):
+            tile = queue.popleft()
+
+            new_one = tuple([a(z) for z in tile])
+            new_two = tuple([b(z) for z in tile])
+
+            if new_one not in seen:
+                seen.add(new_one)
+                self.tree.append([i for i in new_one])
+                queue.append(new_one)
+
+            if new_two not in seen:
+                seen.add(new_two)
+                self.tree.append([i for i in new_two])
+                queue.append(new_two)
+
+        # now add the points to be displayed
+        seen = set()
+        for edge in self.tree:
+            seen.add(edge[0])
+            seen.add(edge[1])
+
+        for point in seen:
+            self.points.append(point)
+
 
 def render(screen, disk: PoincareDisk):
     clear(screen)
     draw_poincare_disk(screen, disk)
+    draw_point(screen, 0, 6, (255, 0, 255))
     pygame.display.update()
 
 
@@ -116,6 +166,11 @@ def draw_poincare_disk(screen, disk: PoincareDisk):
 
     for geodesic in disk.geodesics:
         draw_hyperbolic_geodesic(screen, geodesic[0], geodesic[1])
+
+    for edge in disk.tree:
+        a = cnum_to_pixels(edge[0], SCREEN_WIDTH, SCREEN_WIDTH)
+        b = cnum_to_pixels(edge[1], SCREEN_WIDTH, SCREEN_WIDTH)
+        pygame.draw.line(screen, (0, 0, 0), a.to_vec2(), b.to_vec2())
 
 
 def draw_boundary_circle(screen):
@@ -185,7 +240,7 @@ def draw_diameter(screen, alpha: float):
 def draw_perpendicular_arc(screen, alpha: float, beta: float):
 
     # Listen, it's 4am and I'm sleepy
-    # don't judge this crap
+    # I don't wanna do the normal math
     while alpha < 0:
         alpha += 2 * math.pi
 
@@ -216,9 +271,9 @@ def draw_perpendicular_arc(screen, alpha: float, beta: float):
     pygame.draw.arc(screen, (100, 100, 100), bbox, alpha_prime, beta_prime)
 
 
-def draw_point(screen, cnum: complex, radius):
+def draw_point(screen, cnum: complex, radius, color=(0, 0, 0)):
     coords = cnum_to_pixels(cnum, SCREEN_HEIGHT, SCREEN_HEIGHT)
-    pygame.draw.circle(screen, (0, 0, 0), coords.to_vec2(), radius)
+    pygame.draw.circle(screen, color, coords.to_vec2(), radius)
 
 
 def clear(screen):
@@ -231,19 +286,17 @@ def mainLoop():
     exit = False
     disk = PoincareDisk()
 
-    for _ in range(100):
-        x = 2 * random.random() - 1
-        y = 2 * random.random() - 1
-        while x**2 + y**2 > 1:
-            y = 2 * random.random() - 1
+    keydict = {
+        pygame.K_UP: False,
+        pygame.K_DOWN: False,
+        pygame.K_LEFT: False,
+        pygame.K_RIGHT: False,
+    }
 
-        disk.add_point(complex(x, y))
-
-    disk.add_ideal_polygon(IdealPolygon.regular(3, math.pi / 12))
-    disk.add_ideal_polygon(IdealPolygon([math.pi / 3, math.pi, 5 * math.pi / 3]))
+    disk.generate_tiling(3, 10000)
 
     while not exit:
-        clock.tick(FPS)
+        delta_t = clock.tick(FPS)
         render(screen, disk)
 
         for event in pygame.event.get():
@@ -251,9 +304,28 @@ def mainLoop():
                 exit = True
 
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    rot = MobiusTransform.disk_biholomorphic(math.pi / 12, 0)
-                    disk.apply_mobius(rot)
+                if event.key in keydict:
+                    keydict[event.key] = True
+                elif event.key == pygame.K_r:
+                    disk.generate_tiling(3, 10000)
+
+            if event.type == pygame.KEYUP:
+                if event.key in keydict:
+                    keydict[event.key] = False
+
+        if keydict[pygame.K_UP]:
+            moveup = MobiusTransform.disk_biholomorphic(0, 0.0005j * delta_t)
+            disk.apply_mobius(moveup)
+        elif keydict[pygame.K_DOWN]:
+            movedown = MobiusTransform.disk_biholomorphic(0, -0.0005j * delta_t)
+            disk.apply_mobius(movedown)
+
+        if keydict[pygame.K_RIGHT]:
+            rot = MobiusTransform.disk_biholomorphic(delta_t * math.pi / 3000, 0)
+            disk.apply_mobius(rot)
+        elif keydict[pygame.K_LEFT]:
+            rot = MobiusTransform.disk_biholomorphic(delta_t * -math.pi / 3000, 0)
+            disk.apply_mobius(rot)
 
 
 if __name__ == "__main__":
