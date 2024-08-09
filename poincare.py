@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Tuple
 import math
 import cmath
 
@@ -9,6 +9,8 @@ from pygame.math import Vector2 as Vec2
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 800
 FPS = 60
+
+POINT_RADIUS = 5
 
 
 @dataclass
@@ -40,39 +42,54 @@ class MobiusTransform:
         return (a * z + b) / (c * z + d)
 
 
-@dataclass
-class MathCoord:
-    x: float
-    y: float
-
-    def mobius_transform(self, transform: MobiusTransform) -> "MathCoord":
-        z = self.to_complex()
-        a, b, c, d = transform
-        z_tr = (a * z + b) / (c * z + d)
-        return MathCoord.from_complex(z_tr)
-
-    @staticmethod
-    def from_complex(complex_num: complex) -> "MathCoord":
-        return MathCoord(complex_num.real, complex_num.imag)
-
-    def to_complex(self):
-        return complex(self.x, self.y)
-
-
 def cexpi(theta: float):
     return cmath.exp(1j * theta)
 
 
-def render(screen, alpha):
+@dataclass
+class IdealPolygon:
+    points: List[float]
+
+    @staticmethod
+    def regular(num_sides: int, starting_angle: float) -> "IdealPolygon":
+        angle_difference = 2 * math.pi / num_sides
+        angles = [starting_angle + i * angle_difference for i in range(num_sides)]
+        return IdealPolygon(angles)
+
+
+class PoincareDisk:
+    def __init__(self):
+        self.points: List[complex] = []
+        self.ideal_polygons: List[IdealPolygon] = []
+        self.geodesics: List[Tuple[float, float]] = []
+
+    def add_point(self, point: complex):
+        self.points.append(point)
+
+    def add_ideal_polygon(self, polygon: IdealPolygon):
+        self.ideal_polygons.append(polygon)
+
+    def add_geodesic(self, alpha: float, beta: float):
+        self.geodesics.append((alpha, beta))
+
+
+def render(screen, disk: PoincareDisk):
     clear(screen)
-    draw_poincare_disk(screen, alpha)
-    draw_point(screen, complex(0.4, -0.1), 5)
+    draw_poincare_disk(screen, disk)
     pygame.display.update()
 
 
-def draw_poincare_disk(screen, alpha):
+def draw_poincare_disk(screen, disk: PoincareDisk):
     draw_boundary_circle(screen)
-    draw_ideal_polygon(screen, [alpha, alpha + math.pi / 2, alpha + math.pi])
+
+    for point in disk.points:
+        draw_point(screen, point, POINT_RADIUS)
+
+    for polygon in disk.ideal_polygons:
+        draw_ideal_polygon(screen, polygon)
+
+    for geodesic in disk.geodesics:
+        draw_hyperbolic_geodesic(screen, geodesic[0], geodesic[1])
 
 
 def draw_boundary_circle(screen):
@@ -85,7 +102,7 @@ def draw_boundary_circle(screen):
     )
 
 
-def unit_circle_coordinates_to_real(coord: complex, width: int, height: int) -> Vec2Int:
+def cnum_to_pixels(coord: complex, width: int, height: int) -> Vec2Int:
     frame_x = (coord.real + 1) / 2
     frame_y = 1 - (coord.imag + 1) / 2
 
@@ -116,7 +133,8 @@ def draw_hyperbolic_geodesic(screen, alpha: float, beta: float):
         draw_perpendicular_arc(screen, alpha, beta)
 
 
-def draw_ideal_polygon(screen, angles: List[float]):
+def draw_ideal_polygon(screen, polygon: IdealPolygon):
+    angles = polygon.points
     length = len(angles)
     if length <= 1:
         return
@@ -132,15 +150,21 @@ def draw_diameter(screen, alpha: float):
     beta = alpha + math.pi
     end_point = complex(math.cos(beta), math.sin(beta))
 
-    start_real = unit_circle_coordinates_to_real(
-        start_point, SCREEN_WIDTH, SCREEN_HEIGHT
-    )
-    end_real = unit_circle_coordinates_to_real(end_point, SCREEN_WIDTH, SCREEN_HEIGHT)
+    start_real = cnum_to_pixels(start_point, SCREEN_WIDTH, SCREEN_HEIGHT)
+    end_real = cnum_to_pixels(end_point, SCREEN_WIDTH, SCREEN_HEIGHT)
 
     pygame.draw.line(screen, (0, 0, 0), start_real.to_vec2(), end_real.to_vec2())
 
 
 def draw_perpendicular_arc(screen, alpha: float, beta: float):
+
+    bigger, smaller = max(alpha, beta), min(alpha, beta)
+    while bigger - smaller > math.pi:
+        smaller += 2 * math.pi
+        bigger, smaller = max(bigger, smaller), min(bigger, smaller)
+
+    beta, alpha = bigger, smaller
+
     theta = beta - alpha
     r = math.tan(theta / 2)
     unrotated_center = complex(math.sqrt(1 + r**2), 0)
@@ -149,9 +173,7 @@ def draw_perpendicular_arc(screen, alpha: float, beta: float):
     alpha_prime = math.pi / 2 + theta + alpha
     beta_prime = 3 * math.pi / 2 + alpha
 
-    center_real_coordinates = unit_circle_coordinates_to_real(
-        center, SCREEN_WIDTH, SCREEN_HEIGHT
-    )
+    center_real_coordinates = cnum_to_pixels(center, SCREEN_WIDTH, SCREEN_HEIGHT)
 
     bbox = circle_to_bounding_rect(
         center_real_coordinates.to_vec2(), r * SCREEN_WIDTH / 2
@@ -161,7 +183,7 @@ def draw_perpendicular_arc(screen, alpha: float, beta: float):
 
 
 def draw_point(screen, cnum: complex, radius):
-    coords = unit_circle_coordinates_to_real(cnum, SCREEN_HEIGHT, SCREEN_HEIGHT)
+    coords = cnum_to_pixels(cnum, SCREEN_HEIGHT, SCREEN_HEIGHT)
     pygame.draw.circle(screen, (0, 0, 0), coords.to_vec2(), radius)
 
 
@@ -173,11 +195,16 @@ def mainLoop():
     clock = pygame.time.Clock()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     exit = False
-    alpha = 0
+    disk = PoincareDisk()
+
+    disk.add_point(0.4 + 0.2j)
+    disk.add_ideal_polygon(IdealPolygon.regular(3, math.pi / 12))
+    disk.add_ideal_polygon(IdealPolygon([math.pi / 3, math.pi, 5 * math.pi / 3]))
+    disk.add_geodesic(5 * math.pi / 3, math.pi / 3)
 
     while not exit:
         clock.tick(FPS)
-        render(screen, alpha)
+        render(screen, disk)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -185,7 +212,8 @@ def mainLoop():
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
-                    alpha += 0.1
+                    pass
+                # alpha += 0.1
 
 
 if __name__ == "__main__":
