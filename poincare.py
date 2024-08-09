@@ -80,7 +80,7 @@ class PoincareDisk:
     def __init__(self):
         self.points: List[complex] = []
         self.tree: List[List[complex]] = []
-        self.path: List[List[complex]] = []
+        self.path_edge: List[complex] = []
         self.ideal_polygons: List[IdealPolygon] = []
         self.geodesics: List[Tuple[float, float]] = []
 
@@ -104,8 +104,7 @@ class PoincareDisk:
         for i in range(len(self.tree)):
             self.tree[i] = [tr(z) for z in self.tree[i]]
 
-        for i in range(len(self.path)):
-            self.path[i] = [tr(z) for z in self.path[i]]
+        # self.path_edge = [tr(z) for z in self.path_edge]
 
     def generate_tiling(self, order: int, numtiles: int):
         self.points = []
@@ -152,18 +151,7 @@ class PoincareDisk:
             self.points.append(point)
 
     def generate_path(self, path_length: int):
-        self.path = []
-        # Not the most efficient algorithm, but it works
-        node = random.choice(self.tree)[0]
-
-        # eww
-        for _ in range(path_length):
-            neighbors = [i for i in self.tree if node in i and i not in self.path]
-            chosen = random.choice(neighbors)
-            self.path.append(chosen)
-            node = chosen[0] if chosen[1] == node else chosen[1]
-
-        print(len(self.path))
+        self.path_edge = random.choice(self.tree)
 
 
 def render(screen, disk: PoincareDisk):
@@ -188,8 +176,8 @@ def draw_poincare_disk(screen, disk: PoincareDisk):
     for edge in disk.tree:
         a = cnum_to_pixels(edge[0], SCREEN_WIDTH, SCREEN_WIDTH)
         b = cnum_to_pixels(edge[1], SCREEN_WIDTH, SCREEN_WIDTH)
-        color = (0, 0, 0) if edge not in disk.path else (255, 0, 0)
-        pygame.draw.line(screen, color, a.to_vec2(), b.to_vec2())
+        # color = (0, 0, 0) if edge is disk.path_edge else (255, 0, 0)
+        pygame.draw.line(screen, (0, 0, 0), a.to_vec2(), b.to_vec2())
 
 
 def draw_boundary_circle(screen):
