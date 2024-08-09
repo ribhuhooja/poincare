@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import List
 import math
+import cmath
 
 import pygame
 from pygame.math import Vector2 as Vec2
@@ -19,15 +20,59 @@ class Vec2Int:
         return Vec2(self.x, self.y)
 
 
-def render(screen):
+@dataclass
+class MobiusTransform:
+    a: float
+    b: float
+    c: float
+    d: float
+
+    # NOTE: ad - bc should equal 1
+    # Represents the matrix
+    # |a b|
+    # |c d|
+
+    def __iter__(self):
+        return iter((self.a, self.b, self.c, self.d))
+
+    def __call__(self, z: complex) -> complex:
+        a, b, c, d = self
+        return (a * z + b) / (c * z + d)
+
+
+@dataclass
+class MathCoord:
+    x: float
+    y: float
+
+    def mobius_transform(self, transform: MobiusTransform) -> "MathCoord":
+        z = self.to_complex()
+        a, b, c, d = transform
+        z_tr = (a * z + b) / (c * z + d)
+        return MathCoord.from_complex(z_tr)
+
+    @staticmethod
+    def from_complex(complex_num: complex) -> "MathCoord":
+        return MathCoord(complex_num.real, complex_num.imag)
+
+    def to_complex(self):
+        return complex(self.x, self.y)
+
+
+def cexpi(theta: float):
+    return cmath.exp(1j * theta)
+
+
+def render(screen, alpha):
     clear(screen)
-    draw_poincare_disk(screen)
+    draw_poincare_disk(screen, alpha)
+    draw_point(screen, complex(0.4, -0.1), 5)
     pygame.display.update()
 
 
-def draw_poincare_disk(screen):
+def draw_poincare_disk(screen, alpha):
     draw_boundary_circle(screen)
-    draw_ideal_polygon(screen, [0, math.pi / 2, math.pi])
+    draw_ideal_polygon(screen, [alpha, alpha + math.pi / 2, alpha + math.pi])
 
 
 def draw_boundary_circle(screen):
@@ -40,9 +85,9 @@ def draw_boundary_circle(screen):
     )
 
 
-def unit_circle_coordinates_to_real(coord: Vec2, width: int, height: int) -> Vec2Int:
-    frame_x = (coord.x + 1) / 2
-    frame_y = 1 - (coord.y + 1) / 2
+def unit_circle_coordinates_to_real(coord: complex, width: int, height: int) -> Vec2Int:
+    frame_x = (coord.real + 1) / 2
+    frame_y = 1 - (coord.imag + 1) / 2
 
     real_x = int(width * frame_x)
     real_y = int(height * frame_y)
@@ -83,9 +128,9 @@ def draw_ideal_polygon(screen, angles: List[float]):
 
 
 def draw_diameter(screen, alpha: float):
-    start_point = Vec2(math.cos(alpha), math.sin(alpha))
+    start_point = complex(math.cos(alpha), math.sin(alpha))
     beta = alpha + math.pi
-    end_point = Vec2(math.cos(beta), math.sin(beta))
+    end_point = complex(math.cos(beta), math.sin(beta))
 
     start_real = unit_circle_coordinates_to_real(
         start_point, SCREEN_WIDTH, SCREEN_HEIGHT
@@ -98,9 +143,9 @@ def draw_diameter(screen, alpha: float):
 def draw_perpendicular_arc(screen, alpha: float, beta: float):
     theta = beta - alpha
     r = math.tan(theta / 2)
-    unrotated_center = Vec2(math.sqrt(1 + r**2), 0)
+    unrotated_center = complex(math.sqrt(1 + r**2), 0)
 
-    center = unrotated_center.rotate_rad(theta / 2 + alpha)
+    center = unrotated_center * cexpi(theta / 2 + alpha)
     alpha_prime = math.pi / 2 + theta + alpha
     beta_prime = 3 * math.pi / 2 + alpha
 
@@ -115,6 +160,11 @@ def draw_perpendicular_arc(screen, alpha: float, beta: float):
     pygame.draw.arc(screen, (100, 100, 100), bbox, alpha_prime, beta_prime)
 
 
+def draw_point(screen, cnum: complex, radius):
+    coords = unit_circle_coordinates_to_real(cnum, SCREEN_HEIGHT, SCREEN_HEIGHT)
+    pygame.draw.circle(screen, (0, 0, 0), coords.to_vec2(), radius)
+
+
 def clear(screen):
     screen.fill((255, 255, 255))
 
@@ -123,14 +173,19 @@ def mainLoop():
     clock = pygame.time.Clock()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     exit = False
+    alpha = 0
 
     while not exit:
         clock.tick(FPS)
-        render(screen)
+        render(screen, alpha)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 exit = True
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    alpha += 0.1
 
 
 if __name__ == "__main__":
