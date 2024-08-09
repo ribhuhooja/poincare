@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import List, Tuple
 import math
 import cmath
+import random
 
 import pygame
 from pygame.math import Vector2 as Vec2
@@ -24,10 +25,10 @@ class Vec2Int:
 
 @dataclass
 class MobiusTransform:
-    a: float
-    b: float
-    c: float
-    d: float
+    a: complex
+    b: complex
+    c: complex
+    d: complex
 
     # NOTE: ad - bc should equal 1
     # Represents the matrix
@@ -40,6 +41,16 @@ class MobiusTransform:
     def __call__(self, z: complex) -> complex:
         a, b, c, d = self
         return (a * z + b) / (c * z + d)
+
+    @staticmethod
+    def disk_biholomorphic(phi: float, alpha: complex):
+        # Returns the transform e^(i*phi) * ((z - alpha)/(1 - alpha-conj*z))
+        a = cexpi(phi)
+        b = -1 * a * alpha
+        c = -1 * alpha.conjugate()
+        d = 1
+
+        return MobiusTransform(a, b, c, d)
 
 
 def cexpi(theta: float):
@@ -56,12 +67,21 @@ class IdealPolygon:
         angles = [starting_angle + i * angle_difference for i in range(num_sides)]
         return IdealPolygon(angles)
 
+    def apply_mobius(self, tr: MobiusTransform):
+        self.points = [transform_ideal_point(i, tr) for i in self.points]
+
+
+def transform_ideal_point(point: float, tr: MobiusTransform):
+    return cmath.phase(tr(cexpi(point)))
+
 
 class PoincareDisk:
     def __init__(self):
         self.points: List[complex] = []
         self.ideal_polygons: List[IdealPolygon] = []
         self.geodesics: List[Tuple[float, float]] = []
+
+        # NOTE: Currently mobius transformations don't apply to geodesics
 
     def add_point(self, point: complex):
         self.points.append(point)
@@ -71,6 +91,12 @@ class PoincareDisk:
 
     def add_geodesic(self, alpha: float, beta: float):
         self.geodesics.append((alpha, beta))
+
+    def apply_mobius(self, tr: MobiusTransform):
+        self.points = [tr(i) for i in self.points]
+
+        for poly in self.ideal_polygons:
+            poly.apply_mobius(tr)
 
 
 def render(screen, disk: PoincareDisk):
@@ -158,6 +184,14 @@ def draw_diameter(screen, alpha: float):
 
 def draw_perpendicular_arc(screen, alpha: float, beta: float):
 
+    # Listen, it's 4am and I'm sleepy
+    # don't judge this crap
+    while alpha < 0:
+        alpha += 2 * math.pi
+
+    while beta < 0:
+        beta += 2 * math.pi
+
     bigger, smaller = max(alpha, beta), min(alpha, beta)
     while bigger - smaller > math.pi:
         smaller += 2 * math.pi
@@ -197,10 +231,16 @@ def mainLoop():
     exit = False
     disk = PoincareDisk()
 
-    disk.add_point(0.4 + 0.2j)
+    for _ in range(100):
+        x = 2 * random.random() - 1
+        y = 2 * random.random() - 1
+        while x**2 + y**2 > 1:
+            y = 2 * random.random() - 1
+
+        disk.add_point(complex(x, y))
+
     disk.add_ideal_polygon(IdealPolygon.regular(3, math.pi / 12))
     disk.add_ideal_polygon(IdealPolygon([math.pi / 3, math.pi, 5 * math.pi / 3]))
-    disk.add_geodesic(5 * math.pi / 3, math.pi / 3)
 
     while not exit:
         clock.tick(FPS)
@@ -212,8 +252,8 @@ def mainLoop():
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
-                    pass
-                # alpha += 0.1
+                    rot = MobiusTransform.disk_biholomorphic(math.pi / 12, 0)
+                    disk.apply_mobius(rot)
 
 
 if __name__ == "__main__":
