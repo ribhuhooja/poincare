@@ -24,6 +24,9 @@ class Vec2Int:
         return Vec2(self.x, self.y)
 
 
+# This class is a representation of a mobius transform using its matrix
+# Coordinates are represented as complex numbers, so we can directly map
+# coordinates using transformation
 @dataclass
 class MobiusTransform:
     a: complex
@@ -41,6 +44,10 @@ class MobiusTransform:
     @staticmethod
     def disk_biholomorphic(phi: float, alpha: complex):
         # Returns the transform e^(i*phi) * ((z - alpha)/(1 - alpha-conj*z))
+        # these are the only (biholomorphic aka complex differentiable and invertible)
+        # transformations that fix the poincare disk,
+        # which is the model we care about.
+
         a = cexpi(phi)
         b = -1 * a * alpha
         c = -1 * alpha.conjugate()
@@ -49,6 +56,7 @@ class MobiusTransform:
         return MobiusTransform(a, b, c, d)
 
 
+# e to the i theta
 def cexpi(theta: float):
     return cmath.exp(1j * theta)
 
@@ -67,10 +75,15 @@ class IdealPolygon:
         self.points = [transform_ideal_point(i, tr) for i in self.points]
 
 
+# we need this special function here because unlike normal points
+# ideal points are NOT represented by their complex number, but rather their angle
+# This is to prevent floating point errors from pushing them off the circle
 def transform_ideal_point(point: float, tr: MobiusTransform):
     return cmath.phase(tr(cexpi(point)))
 
 
+# a class that holds some points, polygons, and geodesics
+# Sort of a "frame" that then gets transformed
 class PoincareDisk:
     def __init__(self):
         self.points: List[complex] = []
@@ -99,6 +112,7 @@ class PoincareDisk:
         for i in range(len(self.tree)):
             self.tree[i] = [tr(z) for z in self.tree[i]]
 
+    # generates the (dual of a) tiling of the hyperbolic plane by ideal polygons
     def generate_tiling(self, order: int, numtiles: int):
         self.points = []
         self.tree = []
@@ -182,6 +196,7 @@ def draw_boundary_circle(screen):
     )
 
 
+# convert from the complex number coordinate to real pixel coordinates
 def cnum_to_pixels(coord: complex, width: int, height: int) -> Vec2Int:
     frame_x = (coord.real + 1) / 2
     frame_y = 1 - (coord.imag + 1) / 2
@@ -202,6 +217,7 @@ def diametrically_opposite_angles(alpha: float, beta: float) -> bool:
     return float_is_int(theta)
 
 
+# a very rough way of checking whether a float is actually an integer
 def float_is_int(num: float) -> bool:
     return abs(num - round(num)) < 0.001
 
@@ -319,6 +335,8 @@ def mainLoop():
                 if event.key in keydict:
                     keydict[event.key] = False
 
+        # Just apply the mobius transformations that correspond to the
+        # movement that the player wants
         if keydict[pygame.K_UP]:
             moveup = MobiusTransform.disk_biholomorphic(0, 0.0005j * delta_t)
             disk.apply_mobius(moveup)
