@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Tuple, Set
+from typing import List, Tuple
 import math
 import cmath
 import random
@@ -30,11 +30,6 @@ class MobiusTransform:
     b: complex
     c: complex
     d: complex
-
-    # NOTE: ad - bc should equal 1
-    # Represents the matrix
-    # |a b|
-    # |c d|
 
     def __iter__(self):
         return iter((self.a, self.b, self.c, self.d))
@@ -103,8 +98,6 @@ class PoincareDisk:
 
         for i in range(len(self.tree)):
             self.tree[i] = [tr(z) for z in self.tree[i]]
-
-        # self.path_edge = [tr(z) for z in self.path_edge]
 
     def generate_tiling(self, order: int, numtiles: int):
         self.points = []
@@ -176,7 +169,6 @@ def draw_poincare_disk(screen, disk: PoincareDisk):
     for edge in disk.tree:
         a = cnum_to_pixels(edge[0], SCREEN_WIDTH, SCREEN_WIDTH)
         b = cnum_to_pixels(edge[1], SCREEN_WIDTH, SCREEN_WIDTH)
-        # color = (0, 0, 0) if edge is disk.path_edge else (255, 0, 0)
         pygame.draw.line(screen, (0, 0, 0), a.to_vec2(), b.to_vec2())
 
 
@@ -246,13 +238,18 @@ def draw_diameter(screen, alpha: float):
 
 def draw_perpendicular_arc(screen, alpha: float, beta: float):
 
-    # Listen, it's 4am and I'm sleepy
-    # I don't wanna do the normal math
     while alpha < 0:
         alpha += 2 * math.pi
 
-    while beta < 0:
-        beta += 2 * math.pi
+    # Making everything positive
+    # alpha + 2kpi >= 0 => alpha >= -2kpi => alpha <= 2kpi => k = ceil(alpha/2pi)
+    if alpha < 0:
+        k = math.ceil(alpha / (2 * math.pi))
+        alpha += 2 * k * math.pi
+
+    if beta < 0:
+        k = math.ceil(beta / (2 * math.pi))
+        beta += 2 * k * math.pi
 
     bigger, smaller = max(alpha, beta), min(alpha, beta)
     while bigger - smaller > math.pi:
@@ -273,7 +270,7 @@ def draw_perpendicular_arc(screen, alpha: float, beta: float):
 
     bbox = circle_to_bounding_rect(
         center_real_coordinates.to_vec2(), r * SCREEN_WIDTH / 2
-    )  # TODO: fix this. Also, GODFUCKINGDAMMIT
+    )  # TODO: fix the square assumption here
 
     pygame.draw.arc(screen, (100, 100, 100), bbox, alpha_prime, beta_prime)
 
