@@ -316,6 +316,8 @@ def mainLoop():
     disk.generate_tiling(3, 10000)
     disk.generate_path(5)
 
+    disk.apply_mobius(MobiusTransform.disk_biholomorphic(0, 1j*(2-math.sqrt(3))))
+
     while not exit:
         delta_t = clock.tick(FPS)
         render(screen, disk)
